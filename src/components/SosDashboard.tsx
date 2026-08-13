@@ -13,8 +13,13 @@ import {
   Send,
   Loader2,
   Info,
-  Clock,
+  RefreshCw,
+  Edit3,
+  ExternalLink,
   CheckCircle2,
+  UserPlus,
+  MessageSquare,
+  Users,
 } from "lucide-react";
 import { UserProfile, GeoLocationState } from "../types";
 import { VIETNAM_HOTLINES } from "../data/mockData";
@@ -27,6 +32,8 @@ interface SosDashboardProps {
   onTriggerSosCountdown: (reason: string) => void;
   isStrobeActive: boolean;
   onToggleStrobe: () => void;
+  onRefreshGps?: () => void;
+  onUpdateLocation?: (newLoc: Partial<GeoLocationState>) => void;
 }
 
 export const SosDashboard: React.FC<SosDashboardProps> = ({
@@ -37,12 +44,15 @@ export const SosDashboard: React.FC<SosDashboardProps> = ({
   onTriggerSosCountdown,
   isStrobeActive,
   onToggleStrobe,
+  onRefreshGps,
+  onUpdateLocation,
 }) => {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedMsg, setCopiedMsg] = useState(false);
+  const [isRefreshingGps, setIsRefreshingGps] = useState(false);
+  const [isEditingCustomAddress, setIsEditingCustomAddress] = useState(false);
+  const [customAddressInput, setCustomAddressInput] = useState("");
   const [customIncidentNote, setCustomIncidentNote] = useState("");
-  const [isGeneratingAiMsg, setIsGeneratingAiMsg] = useState(false);
-  const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
 
   // Generate Google Maps URL
   const mapsUrl = `https://maps.google.com/?q=${location.lat},${location.lng}`;
@@ -51,11 +61,10 @@ export const SosDashboard: React.FC<SosDashboardProps> = ({
 Nạn nhân: ${userProfile.name || "Người dùng thiết bị"} ${userProfile.phone ? `(${userProfile.phone})` : ""}
 Thời gian: ${new Date().toLocaleTimeString("vi-VN")} ${new Date().toLocaleDateString("vi-VN")}
 Vị trí GPS: ${location.address}
-Tọa độ: ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}
-Bản đồ vị trí: ${mapsUrl}
-Pin còn: ${location.batteryLevel}%
-Tình trạng y tế: Nhóm máu ${userProfile.bloodType || "Chưa cập nhật"}, Dị ứng: ${userProfile.allergies || "Không"}.
-Vui lòng hỗ trợ cứu trợ ngay lập tức!`;
+Tọa độ Google Maps: ${mapsUrl}
+Sự cố: ${customIncidentNote || "Cần cứu trợ khẩn cấp 1-chạm"}
+Tình trạng y tế: Nhóm máu ${userProfile.bloodType || "O+"}, Dị ứng: ${userProfile.allergies || "Không"}.
+Vui lòng liên hệ và hỗ trợ cấp cứu ngay lập tức!`;
 
   const handleCopyText = (text: string, isMessage = false, index?: number) => {
     navigator.clipboard.writeText(text);
@@ -68,281 +77,375 @@ Vui lòng hỗ trợ cứu trợ ngay lập tức!`;
     }
   };
 
-  const handleGenerateAiMessage = async () => {
-    setIsGeneratingAiMsg(true);
-    try {
-      const res = await fetch("/api/ai/sos-message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userName: userProfile.name,
-          incidentType: customIncidentNote || "Cứu hộ khẩn cấp 1 chạm",
-          location: location,
-          medicalNotes: `Nhóm máu ${userProfile.bloodType}, ${userProfile.allergies}`,
-          batteryLevel: location.batteryLevel,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success && data.data?.smsShortText) {
-        setGeneratedMessage(data.data.smsShortText);
-      } else {
-        setGeneratedMessage(defaultSosMessageText);
-      }
-    } catch (err) {
-      console.error("Error generating AI SOS msg:", err);
-      setGeneratedMessage(defaultSosMessageText);
-    } finally {
-      setIsGeneratingAiMsg(false);
+  const handleManualRefreshGps = () => {
+    setIsRefreshingGps(true);
+    if (onRefreshGps) {
+      onRefreshGps();
     }
+    setTimeout(() => {
+      setIsRefreshingGps(false);
+    }, 1500);
+  };
+
+  const handleSaveCustomAddress = () => {
+    if (customAddressInput.trim() && onUpdateLocation) {
+      onUpdateLocation({
+        address: customAddressInput.trim(),
+      });
+    }
+    setIsEditingCustomAddress(false);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Visual Strobe Overlay if Active */}
       {isStrobeActive && (
         <div className="fixed inset-0 z-50 pointer-events-none bg-red-600/30 animate-pulse mix-blend-overlay border-8 border-red-500" />
       )}
 
-      {/* Main SOS Trigger Hero Card */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 p-6 rounded-2xl border border-red-900/40 shadow-2xl relative overflow-hidden">
+      {/* 1. TOP EMERGENCY HOTLINES (Direct 1-Touch Dialing) */}
+      <div className="bg-slate-900 p-4 sm:p-5 rounded-2xl border border-red-500/30 space-y-3">
+        <div className="flex items-center justify-between text-xs font-bold text-red-400">
+          <span className="flex items-center gap-1.5 uppercase tracking-wide">
+            <PhoneCall className="w-4 h-4 text-red-500 animate-pulse" />
+            TỔNG ĐÀI CẤP CỨU KHẨN CẤP (GỌI TRỰC TIẾP 1-CHẠM)
+          </span>
+          <span className="text-slate-400 font-normal">Miễn phí 24/7</span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <a
+            href="tel:115"
+            className="flex flex-col items-center justify-center p-3 rounded-xl bg-gradient-to-b from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white shadow-lg shadow-red-600/30 border border-red-400/40 text-center active:scale-95 transition"
+          >
+            <span className="text-xl sm:text-2xl font-black">115</span>
+            <span className="text-[11px] sm:text-xs font-extrabold uppercase mt-0.5">CẤP CỨU Y TẾ</span>
+          </a>
+
+          <a
+            href="tel:113"
+            className="flex flex-col items-center justify-center p-3 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white shadow-lg shadow-blue-600/30 border border-blue-400/40 text-center active:scale-95 transition"
+          >
+            <span className="text-xl sm:text-2xl font-black">113</span>
+            <span className="text-[11px] sm:text-xs font-extrabold uppercase mt-0.5">CẢNH SÁT</span>
+          </a>
+
+          <a
+            href="tel:114"
+            className="flex flex-col items-center justify-center p-3 rounded-xl bg-gradient-to-b from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-lg shadow-amber-600/30 border border-amber-400/40 text-center active:scale-95 transition"
+          >
+            <span className="text-xl sm:text-2xl font-black">114</span>
+            <span className="text-[11px] sm:text-xs font-extrabold uppercase mt-0.5">CỨU HỎA</span>
+          </a>
+        </div>
+      </div>
+
+      {/* 2. MAIN GIANT SOS BUTTON & CONTROLS */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 p-6 rounded-2xl border border-red-900/50 shadow-2xl relative overflow-hidden">
         <div className="absolute -right-12 -top-12 w-64 h-64 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-          {/* Left Hero Content */}
-          <div className="md:col-span-7 space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/30">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-              <span>NÚT PHÁT TÍN HIỆU CỨU HỘ 1 CHẠM</span>
-            </div>
-
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Bật Cảnh Báo <span className="text-red-500">SOS Khẩn Cấp</span>
-            </h2>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              Nhấn nút để kích hoạt còi báo động khẩn cấp, tự động gửi tọa độ GPS hiện tại kèm bản tin y tế cứu hộ tới người thân và lực lượng chức năng.
-            </p>
-
-            {/* Current GPS Card */}
-            <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700/80 text-xs space-y-1.5 text-slate-300">
-              <div className="flex items-center justify-between font-semibold text-slate-200">
-                <span className="flex items-center gap-1.5 text-emerald-400">
-                  <MapPin className="w-4 h-4" />
-                  Vị trí GPS Hiện tại:
-                </span>
-                <span className="text-slate-400 text-[11px]">Cập nhật live</span>
-              </div>
-              <p className="text-slate-100 font-medium text-xs truncate" title={location.address}>
-                {location.address}
-              </p>
-              <div className="flex items-center gap-4 text-[11px] text-slate-400 font-mono">
-                <span>Lat: {location.lat.toFixed(5)}</span>
-                <span>Lng: {location.lng.toFixed(5)}</span>
-                <span>Chính xác: ±{location.accuracy}m</span>
-              </div>
-            </div>
-
-            {/* Quick Toggles */}
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <button
-                onClick={onToggleSiren}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition border ${
-                  isSirenPlaying
-                    ? "bg-red-600 text-white border-red-400 shadow-lg shadow-red-600/40 animate-pulse"
-                    : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
-                }`}
-              >
-                {isSirenPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-red-400" />}
-                <span>{isSirenPlaying ? "Dừng Còi Báo Động" : "Phát Còi Báo Động Lớn"}</span>
-              </button>
-
-              <button
-                onClick={onToggleStrobe}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition border ${
-                  isStrobeActive
-                    ? "bg-amber-500 text-slate-950 border-amber-300 font-extrabold shadow-lg shadow-amber-500/40 animate-pulse"
-                    : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
-                }`}
-              >
-                <Zap className="w-4 h-4 text-amber-400" />
-                <span>{isStrobeActive ? "Tắt Đèn Nhấp Nháy" : "Bật Đèn Cảnh Báo Sáng"}</span>
-              </button>
-            </div>
+        <div className="flex flex-col items-center justify-center text-center space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/30">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+            <span>NÚT BÁO ĐỘNG SOS 1-CHẠM TỰ ĐỘNG</span>
           </div>
 
-          {/* Right Giant Emergency SOS Button */}
-          <div className="md:col-span-5 flex flex-col items-center justify-center py-4">
-            <div className="relative group">
-              {/* Outer Pulsing Rings */}
-              <div className="absolute -inset-4 bg-red-600/30 rounded-full blur-xl group-hover:bg-red-600/50 transition duration-500 animate-pulse" />
-              <div className="absolute -inset-2 bg-red-500/20 rounded-full animate-ping" />
+          <div className="relative group my-2">
+            <div className="absolute -inset-4 bg-red-600/30 rounded-full blur-xl group-hover:bg-red-600/50 transition duration-500 animate-pulse" />
+            <div className="absolute -inset-2 bg-red-500/20 rounded-full animate-ping" />
 
-              <button
-                onClick={() => onTriggerSosCountdown("Nút bấm SOS khẩn cấp 1 chạm")}
-                className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-full bg-gradient-to-b from-red-500 via-red-600 to-red-800 hover:from-red-600 hover:to-red-900 border-4 border-red-300 text-white shadow-2xl shadow-red-600/60 flex flex-col items-center justify-center gap-2 transform active:scale-95 transition cursor-pointer select-none"
-              >
-                <ShieldAlert className="w-14 h-14 sm:w-16 sm:h-16 text-white drop-shadow-md animate-pulse" />
-                <span className="text-2xl sm:text-3xl font-black tracking-widest drop-shadow">SOS</span>
-                <span className="text-[10px] sm:text-xs font-bold text-red-100 uppercase tracking-wider bg-black/30 px-3 py-1 rounded-full border border-white/20">
-                  NHẤN ĐỂ PHÁT TÍN HIỆU
-                </span>
-              </button>
-            </div>
-            <p className="text-slate-400 text-xs mt-3 text-center">
-              Kích hoạt đếm ngược 15s trước khi tự động phát lệnh cứu hộ
-            </p>
+            <button
+              onClick={() => onTriggerSosCountdown("Kích hoạt nút bấm SOS khẩn cấp")}
+              className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-full bg-gradient-to-b from-red-500 via-red-600 to-red-800 hover:from-red-600 hover:to-red-900 border-4 border-red-300 text-white shadow-2xl shadow-red-600/60 flex flex-col items-center justify-center gap-2 transform active:scale-95 transition cursor-pointer select-none"
+            >
+              <ShieldAlert className="w-16 h-16 sm:w-20 sm:h-20 text-white drop-shadow-md animate-pulse" />
+              <span className="text-3xl sm:text-4xl font-black tracking-widest drop-shadow">SOS</span>
+              <span className="text-[10px] sm:text-xs font-extrabold text-red-100 uppercase tracking-wider bg-black/40 px-3 py-1 rounded-full border border-white/20">
+                BẤM CỨU HỘ NGAY
+              </span>
+            </button>
+          </div>
+
+          <p className="text-slate-300 text-xs sm:text-sm max-w-md">
+            Nhấn nút để kích hoạt còi báo động khẩn cấp, phát tín hiệu đếm ngược và tự động gửi tọa độ GPS đến người thân/cơ quan cứu hộ.
+          </p>
+
+          {/* Quick Siren & Strobe Action Buttons */}
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+            <button
+              onClick={onToggleSiren}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition border ${
+                isSirenPlaying
+                  ? "bg-red-600 text-white border-red-400 shadow-lg shadow-red-600/40 animate-pulse"
+                  : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+              }`}
+            >
+              {isSirenPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-red-400" />}
+              <span>{isSirenPlaying ? "Tắt Còi Báo Động" : "Phát Còi Báo Động Lớn"}</span>
+            </button>
+
+            <button
+              onClick={onToggleStrobe}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition border ${
+                isStrobeActive
+                  ? "bg-amber-500 text-slate-950 border-amber-300 font-extrabold shadow-lg shadow-amber-500/40 animate-pulse"
+                  : "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+              }`}
+            >
+              <Zap className="w-4 h-4 text-amber-400" />
+              <span>{isStrobeActive ? "Tắt Đèn Nhấp Nháy" : "Bật Đèn Cảnh Báo Sáng"}</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Vietnam Emergency Hotlines Section */}
-      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+      {/* 3. ENHANCED HIGH-PRECISION GPS LOCATION CARD */}
+      <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-emerald-400 shrink-0" />
+            <h3 className="font-extrabold text-white text-sm">Vị Trí Cứu Hộ GPS Hiện Tại</h3>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${
+              location.accuracy <= 15 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+            }`}>
+              Chính xác: ±{location.accuracy}m
+            </span>
+
+            <button
+              onClick={handleManualRefreshGps}
+              disabled={isRefreshingGps}
+              className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-lg transition border border-emerald-500/30 font-bold text-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingGps ? "animate-spin" : ""}`} />
+              <span>{isRefreshingGps ? "Đang định vị..." : "Lấy Lại GPS"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Address Display / Inline Edit */}
+        {isEditingCustomAddress ? (
+          <div className="space-y-2 pt-1">
+            <label className="text-xs text-slate-300 font-semibold block">Nhập chi tiết địa chỉ hiện tại (Số nhà, Tầng, Điểm mốc):</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customAddressInput}
+                onChange={(e) => setCustomAddressInput(e.target.value)}
+                placeholder="Ví dụ: Tầng 2, Phòng 204, Trường THPT Nguyễn Trãi..."
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
+              />
+              <button
+                onClick={handleSaveCustomAddress}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl"
+              >
+                Lưu Vị Trí
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-slate-100 font-bold text-sm sm:text-base leading-snug bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+              {location.address}
+            </p>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 font-mono pt-1">
+              <span>Tọa độ: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}</span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setCustomAddressInput(location.address);
+                    setIsEditingCustomAddress(true);
+                  }}
+                  className="flex items-center gap-1 text-amber-400 hover:underline text-[11px] font-sans"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Sửa/Nhập địa chỉ chi tiết</span>
+                </button>
+
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-emerald-400 hover:underline text-[11px] font-sans font-bold"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Mở Google Maps</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. ONE-TAP EMERGENCY SMS BROADCAST */}
+      <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <PhoneCall className="w-5 h-5 text-red-500" />
-            <h3 className="text-base font-bold text-white">Tổng Đài Cứu Hộ Khẩn Cấp (Việt Nam)</h3>
+            <Send className="w-5 h-5 text-emerald-500" />
+            <h3 className="font-extrabold text-white text-sm">Gửi Bản Tin SOS / Tọa Độ Khẩn Cấp</h3>
           </div>
-          <span className="text-xs text-slate-400">Gọi trực tiếp 24/7</span>
+
+          <span className="text-xs text-slate-400">1-Touch SMS Payload</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {VIETNAM_HOTLINES.map((hotline, idx) => (
-            <div
-              key={hotline.number}
-              className="bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 hover:border-slate-600 transition flex flex-col justify-between space-y-2 group"
-            >
-              <div>
-                <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded text-white ${hotline.color}`}>
-                  {hotline.number}
-                </span>
-                <h4 className="font-bold text-slate-100 text-sm mt-1.5">{hotline.name}</h4>
-                <p className="text-[11px] text-slate-400 leading-tight mt-1">{hotline.desc}</p>
-              </div>
+        {/* Input Incident Note */}
+        <div className="space-y-1">
+          <label className="text-xs text-slate-400 block font-semibold">Tình trạng / Mô tả sự cố (nếu có):</label>
+          <input
+            type="text"
+            value={customIncidentNote}
+            onChange={(e) => setCustomIncidentNote(e.target.value)}
+            placeholder="Ví dụ: Bị ngã xe máy gần gầm cầu, cần hỗ trợ..."
+            className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white"
+          />
+        </div>
 
-              <div className="pt-2 flex items-center gap-1.5">
-                <a
-                  href={`tel:${hotline.number}`}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1 transition shadow-sm"
-                >
-                  <PhoneCall className="w-3.5 h-3.5" />
-                  <span>Gọi {hotline.number}</span>
-                </a>
-                <button
-                  onClick={() => handleCopyText(hotline.number, false, idx)}
-                  className="p-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition"
-                  title="Sao chép số"
-                >
-                  {copiedIndex === idx ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-          ))}
+        {/* Live Message Preview Box */}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed whitespace-pre-wrap">
+          {defaultSosMessageText}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <a
+            href={`sms:?body=${encodeURIComponent(defaultSosMessageText)}`}
+            className="flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm rounded-xl transition shadow-lg shadow-emerald-600/30 text-center"
+          >
+            <Send className="w-4 h-4" />
+            <span>MỞ ỨNG DỤNG SMS GỬI NGAY</span>
+          </a>
+
+          <button
+            onClick={() => handleCopyText(defaultSosMessageText, true)}
+            className="flex items-center justify-center gap-2 py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm rounded-xl transition border border-slate-700"
+          >
+            {copiedMsg ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            <span>{copiedMsg ? "Đã Sao Chép Tọa Độ!" : "Sao Chép Tin Nhắn Cứu Hộ"}</span>
+          </button>
         </div>
       </div>
 
-      {/* Primary Emergency Contacts & AI Broadcast Generator */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Primary Guardians */}
-        <div className="lg:col-span-5 bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Share2 className="w-5 h-5 text-amber-500" />
-              <h3 className="text-base font-bold text-white">Người Thân Nhận Tín Hiệu</h3>
-            </div>
-            <span className="text-xs text-slate-400">{userProfile.emergencyContacts.length} Liên hệ</span>
-          </div>
-
-          <div className="space-y-2.5">
-            {userProfile.emergencyContacts.map((contact) => (
-              <div
-                key={contact.id}
-                className="bg-slate-800/90 p-3.5 rounded-xl border border-slate-700 flex items-center justify-between gap-3"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-100 text-sm">{contact.name}</span>
-                    {contact.isPrimary && (
-                      <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.2 rounded border border-amber-500/30">
-                        Chính
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-400">{contact.relationship} • {contact.phone}</p>
-                </div>
-
-                <a
-                  href={`tel:${contact.phone}`}
-                  className="p-2.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white rounded-lg transition border border-red-500/30"
-                  title={`Gọi cho ${contact.name}`}
-                >
-                  <PhoneCall className="w-4 h-4" />
-                </a>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 text-xs text-slate-300 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <p>
-              Mã theo dõi vị trí live của người thân: <strong className="text-amber-300 font-mono">{userProfile.guardianCode}</strong>.
-            </p>
-          </div>
+      {/* 5. DIRECT NATIVE CALL & SMS EMERGENCY CONTACTS */}
+      <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3 text-xs">
+        <div className="flex items-center justify-between font-bold text-slate-200 border-b border-slate-800 pb-2">
+          <span className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-amber-400" />
+            GỌI ĐIỆN & GỬI TIN NHẮN CẦU CỨU BẰNG APP GỐC TRÊN ĐIỆN THOẠI
+          </span>
+          <span className="text-slate-400 font-mono text-[11px]">
+            {userProfile.emergencyContacts.length + (userProfile.primaryRecipientPhone ? 1 : 0)} Liên hệ
+          </span>
         </div>
 
-        {/* Right: AI SOS Message Generator & Dispatch */}
-        <div className="lg:col-span-7 bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Send className="w-5 h-5 text-emerald-500" />
-              <h3 className="text-base font-bold text-white">Soạn Thông Điệp Cứu Hộ SOS (Bản tin SMS/GPS)</h3>
+        {/* Primary Recipient Card if present */}
+        {userProfile.primaryRecipientPhone && (
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-amber-500/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-extrabold text-white text-sm">
+                  {userProfile.primaryRecipientName || "Người Nhận Cảnh Báo Chính"}
+                </span>
+                <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-bold border border-amber-500/30">
+                  Liên hệ chính
+                </span>
+              </div>
+              <span className="text-slate-300 font-mono font-bold">{userProfile.primaryRecipientPhone}</span>
             </div>
-            <button
-              onClick={handleGenerateAiMessage}
-              disabled={isGeneratingAiMsg}
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/50"
-            >
-              {isGeneratingAiMsg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-              <span>Tạo lại bằng AI</span>
-            </button>
-          </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-300">Ghi chú bổ sung sự cố (nếu có):</label>
-            <input
-              type="text"
-              placeholder="Ví dụ: Bị ngã xe máy gần gầm cầu, chảy máu ở chân..."
-              value={customIncidentNote}
-              onChange={(e) => setCustomIncidentNote(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500"
-            />
-          </div>
+            {userProfile.primaryRecipientAddress && (
+              <p className="text-[11px] text-slate-400 truncate">
+                Địa chỉ nhận: {userProfile.primaryRecipientAddress}
+              </p>
+            )}
 
-          {/* Message Preview Box */}
-          <div className="relative bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
-            {generatedMessage || defaultSosMessageText}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <button
-              onClick={() => handleCopyText(generatedMessage || defaultSosMessageText, true)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl transition border border-slate-700"
-            >
-              {copiedMsg ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              <span>{copiedMsg ? "Đã sao chép tin nhắn!" : "Sao chép Bản tin SOS"}</span>
-            </button>
-
-            <div className="flex items-center gap-2">
+            {/* Native App Action Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
               <a
-                href={`sms:?body=${encodeURIComponent(generatedMessage || defaultSosMessageText)}`}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md"
+                href={`tel:${userProfile.primaryRecipientPhone}`}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition shadow-md shadow-emerald-600/30 active:scale-95 text-center"
               >
-                <Send className="w-4 h-4" />
-                <span>Gửi qua SMS</span>
+                <PhoneCall className="w-4 h-4" />
+                <span>GỌI ĐIỆN CẦU CỨU</span>
+              </a>
+
+              <a
+                href={`sms:${userProfile.primaryRecipientPhone}?body=${encodeURIComponent(defaultSosMessageText)}`}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl transition shadow-md shadow-blue-600/30 active:scale-95 text-center"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>GỬI SMS CẦU CỨU</span>
               </a>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Additional Emergency Contacts List */}
+        {userProfile.emergencyContacts.map((cnt) => (
+          <div key={cnt.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-extrabold text-white text-sm">{cnt.name}</span>
+                <span className="ml-2 text-[11px] text-slate-400">({cnt.relationship})</span>
+              </div>
+              <span className="text-slate-300 font-mono font-bold">{cnt.phone}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <a
+                href={`tel:${cnt.phone}`}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-700/80 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl transition active:scale-95 text-center"
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                <span>Gọi Cầu Cứu</span>
+              </a>
+
+              <a
+                href={`sms:${cnt.phone}?body=${encodeURIComponent(defaultSosMessageText)}`}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-700/80 hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition active:scale-95 text-center"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Gửi SMS Cầu Cứu</span>
+              </a>
+            </div>
+          </div>
+        ))}
+
+        {/* Fallback when no contact is saved yet */}
+        {!userProfile.primaryRecipientPhone && userProfile.emergencyContacts.length === 0 && (
+          <div className="bg-amber-950/30 p-4 rounded-xl border border-amber-500/40 space-y-3">
+            <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Chưa có liên hệ người thân nào trong danh bạ khẩn cấp!</span>
+            </div>
+
+            <p className="text-[11px] text-slate-300">
+              Bạn có thể gọi điện hoặc gửi SMS tọa độ GPS trực tiếp tới <strong>115 Cấp Cứu Y Tế</strong> bằng app gốc điện thoại:
+            </p>
+
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href="tel:115"
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs rounded-xl transition text-center shadow-md shadow-red-600/30"
+              >
+                <PhoneCall className="w-4 h-4" />
+                <span>GỌI 115 NGAY</span>
+              </a>
+
+              <a
+                href={`sms:115?body=${encodeURIComponent(defaultSosMessageText)}`}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl transition text-center shadow-md shadow-blue-600/30"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>GỬI SMS TỚI 115</span>
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+

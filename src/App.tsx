@@ -5,12 +5,15 @@ import { AiAudioGuardian } from "./components/AiAudioGuardian";
 import { SmartDangerMap } from "./components/SmartDangerMap";
 import { AiFirstAidAssistant } from "./components/AiFirstAidAssistant";
 import { MedicalProfileManager } from "./components/MedicalProfileManager";
+import { FirebaseGuardianShare } from "./components/FirebaseGuardianShare";
+import { RelativeTracker } from "./components/RelativeTracker";
 import { SosCountdownModal } from "./components/SosCountdownModal";
 import { ContestDemoPanel } from "./components/ContestDemoPanel";
 import { UserProfile, GeoLocationState } from "./types";
 import { INITIAL_USER_PROFILE, INITIAL_LOCATION, MOCK_DANGER_ZONES } from "./data/mockData";
 import { playEmergencySiren, stopEmergencySiren } from "./utils/audioSynth";
-import { ShieldAlert, Award, Heart, CheckCircle2 } from "lucide-react";
+import { publishLiveStateToFirebase, subscribeToGuardianSession } from "./lib/firebase";
+import { ShieldAlert, Award, Heart, CheckCircle2, Bell } from "lucide-react";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("sos");
@@ -32,7 +35,48 @@ export default function App() {
     } catch (e) {
       console.error("Error saving profile:", e);
     }
+    // Instantly push updated profile to Firebase Firestore
+    if (updated.guardianCode) {
+      publishLiveStateToFirebase(
+        updated,
+        location,
+        {
+          isAlertActive: isSosActiveSuccess,
+          alertType: isSosActiveSuccess ? "SOS_EMERGENCY" : "NONE",
+          alertReason: isSosActiveSuccess ? "Người dùng kích hoạt tín hiệu SOS khẩn cấp!" : "Cập nhật hồ sơ cá nhân",
+        },
+        true
+      );
+    }
   };
+
+  // Incoming Ping State from Firebase
+  const [incomingPing, setIncomingPing] = useState<{ senderName: string; message: string; type: string } | null>(null);
+
+  // Subscribe to own Firebase document for incoming pings/chimes from relatives
+  useEffect(() => {
+    if (!userProfile.guardianCode) return;
+
+    let lastPingTimestamp = Date.now();
+
+    const unsubscribe = subscribeToGuardianSession(userProfile.guardianCode, (data) => {
+      if (data && data.lastPing && data.lastPing.timestamp > lastPingTimestamp) {
+        lastPingTimestamp = data.lastPing.timestamp;
+        setIncomingPing({
+          senderName: data.lastPing.senderName,
+          message: data.lastPing.message,
+          type: data.lastPing.type,
+        });
+
+        if (data.lastPing.type === "RING_BELL") {
+          playEmergencySiren();
+          setTimeout(() => stopEmergencySiren(), 2000);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userProfile.guardianCode]);
 
   // Emergency States
   const [isSirenPlaying, setIsSirenPlaying] = useState(false);
@@ -42,25 +86,133 @@ export default function App() {
   const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false);
   const [isSosActiveSuccess, setIsSosActiveSuccess] = useState(false);
 
-  // Try real browser HTML5 Geolocation API
+  // 1-Minute Automatic Background Heartbeat Signal Sync
+  const [nextHeartbeatSeconds, setNextHeartbeatSeconds] = useState(60);
+  const [lastHeartbeatTime, setLastHeartbeatTime] = useState<string>("Vừa cập nhật");
+
   useEffect(() => {
+    // Perform initial heartbeat broadcast
+    if (userProfile.guardianCode) {
+      publishLiveStateToFirebase(
+        userProfile,
+        location,
+        {
+          isAlertActive: isSosActiveSuccess,
+          alertType: isSosActiveSuccess ? "SOS_EMERGENCY" : "NONE",
+          alertReason: isSosActiveSuccess ? "Người dùng kích hoạt tín hiệu SOS khẩn cấp!" : "Heartbeat tự động 1 phút/lần",
+        },
+        true
+      );
+      setLastHeartbeatTime(new Date().toLocaleTimeString("vi-VN"));
+    }
+
+    // Interval every 1 second to update countdown
+    const timer = setInterval(() => {
+      setNextHeartbeatSeconds((prev) => {
+        if (prev <= 1) {
+          // Trigger 1-minute heartbeat update to Firebase
+          if (userProfile.guardianCode) {
+            publishLiveStateToFirebase(
+              userProfile,
+              location,
+              {
+                isAlertActive: isSosActiveSuccess,
+                alertType: isSosActiveSuccess ? "SOS_EMERGENCY" : "NONE",
+                alertReason: isSosActiveSuccess ? "Người dùng kích hoạt tín hiệu SOS khẩn cấp!" : "Heartbeat tự động 1 phút/lần",
+              },
+              true
+            );
+            setLastHeartbeatTime(new Date().toLocaleTimeString("vi-VN"));
+          }
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [userProfile, location, isSosActiveSuccess]);
+
+  // Try real browser HTML5 Geolocation API with reverse geocoding
+  const fetchAddressForCoords = async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { headers: { "Accept-Language": "vi" } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          return data.display_name;
+        }
+      }
+    } catch (err) {
+      console.error("Reverse geocoding error:", err);
+    }
+    return `Tọa độ GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  };
+
+  const refreshRealLocation = () => {
+    if (!("geolocation" in navigator)) {
+      alert("Trình duyệt không hỗ trợ vị trí GPS.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        const resolvedAddress = await fetchAddressForCoords(latitude, longitude);
+
+        setLocation((prev) => ({
+          ...prev,
+          lat: latitude,
+          lng: longitude,
+          accuracy: Math.round(accuracy),
+          address: resolvedAddress,
+          isSimulated: false,
+          timestamp: Date.now(),
+        }));
+      },
+      (err) => {
+        let msg = "Không thể lấy vị trí GPS.";
+        if (err.code === 1) msg = "Vui lòng cho phép ứng dụng truy cập Vị trí (GPS) trên trình duyệt!";
+        else if (err.code === 2) msg = "Không tìm thấy tín hiệu GPS. Đang dùng tọa độ ước tính.";
+        alert(msg);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
+
+  useEffect(() => {
+    refreshRealLocation();
+
     if ("geolocation" in navigator) {
       const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          setLocation((prev) => ({
-            ...prev,
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: Math.round(pos.coords.accuracy),
-            speed: pos.coords.speed ? Number((pos.coords.speed * 3.6).toFixed(1)) : prev.speed,
-            isSimulated: false,
-            timestamp: Date.now(),
-          }));
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setLocation((prev) => {
+            const needsAddressFetch = prev.address === "Đang xác định vị trí GPS thiết bị..." || Math.abs(prev.lat - lat) > 0.001 || Math.abs(prev.lng - lng) > 0.001;
+            if (needsAddressFetch) {
+              fetchAddressForCoords(lat, lng).then((addr) => {
+                setLocation((current) => ({ ...current, address: addr }));
+              });
+            }
+            return {
+              ...prev,
+              lat,
+              lng,
+              accuracy: Math.round(pos.coords.accuracy),
+              speed: pos.coords.speed ? Number((pos.coords.speed * 3.6).toFixed(1)) : prev.speed,
+              isSimulated: false,
+              timestamp: Date.now(),
+            };
+          });
         },
         (err) => {
-          console.log("Using simulated GPS location fallback:", err.message);
+          console.log("GPS watch error fallback:", err.message);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
       );
 
       return () => navigator.geolocation.clearWatch(watchId);
@@ -175,6 +327,25 @@ export default function App() {
           </div>
         )}
 
+        {/* Incoming Ping Toast Alert from Firebase */}
+        {incomingPing && (
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-2xl flex items-center justify-between gap-3 animate-bounce border-2 border-amber-300">
+            <div className="flex items-center gap-3">
+              <Bell className="w-6 h-6 text-white shrink-0" />
+              <div>
+                <h3 className="font-extrabold text-sm">THÔNG BÁO KIỂM TRA TỪ NGƯỜI THÂN ({incomingPing.senderName}):</h3>
+                <p className="text-xs text-amber-100 font-medium">{incomingPing.message}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIncomingPing(null)}
+              className="px-3 py-1 bg-slate-900 text-amber-300 font-bold text-xs rounded-xl shadow hover:bg-black transition"
+            >
+              Tôi An Toàn
+            </button>
+          </div>
+        )}
+
         {/* View Switcher */}
         {activeTab === "sos" && (
           <SosDashboard
@@ -185,6 +356,27 @@ export default function App() {
             onTriggerSosCountdown={handleTriggerSosCountdown}
             isStrobeActive={isStrobeActive}
             onToggleStrobe={handleToggleStrobe}
+            onRefreshGps={refreshRealLocation}
+            onUpdateLocation={(newLoc) => setLocation((prev) => ({ ...prev, ...newLoc }))}
+          />
+        )}
+
+        {activeTab === "relative_tracker" && (
+          <RelativeTracker
+            userProfile={userProfile}
+            location={location}
+            isSosActive={isSosActiveSuccess}
+            nextHeartbeatSeconds={nextHeartbeatSeconds}
+            lastHeartbeatTime={lastHeartbeatTime}
+          />
+        )}
+
+        {activeTab === "share_code" && (
+          <FirebaseGuardianShare
+            userProfile={userProfile}
+            onUpdateProfile={handleUpdateProfile}
+            location={location}
+            isSosActive={isSosActiveSuccess}
           />
         )}
 

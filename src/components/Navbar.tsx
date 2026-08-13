@@ -11,6 +11,7 @@ import {
   Mic,
   Users,
   Award,
+  Share2,
 } from "lucide-react";
 
 interface NavbarProps {
@@ -36,6 +37,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const tabs = [
     { id: "sos", label: "SOS Khẩn Cấp", icon: ShieldAlert, badge: "Ưu tiên" },
+    { id: "relative_tracker", label: "Theo Dõi Người Thân", icon: Users, badge: "Firebase Live 1p/lần" },
+    { id: "share_code", label: "Mã Chia Sẻ & Firebase", icon: Share2 },
     { id: "guardian", label: "AI Cảm Biến & Âm Thanh", icon: Mic, badge: "AI Live" },
     { id: "map", label: "Bản Đồ Cảnh Báo", icon: MapPin },
     { id: "firstaid", label: "Trợ Lý Sơ Cứu AI", icon: Sparkles },

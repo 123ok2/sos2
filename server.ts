@@ -220,6 +220,80 @@ Trả về JSON:
   }
 });
 
+// API 5: AI Vision Medical & Incident Scanner (Chẩn Đoán Hình Ảnh Y Tế & Sự Cố)
+app.post("/api/ai/vision-first-aid", async (req, res) => {
+  try {
+    const { imageBase64, mimeType, userNotes } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: "Missing imageBase64 parameter" });
+    }
+
+    // Clean base64 string if data URL scheme is present
+    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+    const imageMime = mimeType || "image/jpeg";
+
+    const ai = getGeminiClient();
+    const promptText = `Bạn là Bác sĩ Trợ lý Y tế & Cứu hộ Khẩn cấp bằng Thị giác AI (Gemini Vision) cho dự án AI SafetyNet.
+Hãy phân tích cẩn thận hình ảnh vết thương, sự cố y tế, vết cắn/bỏng hoặc hiện trường do người dùng tải lên.
+${userNotes ? `Ghi chú kèm theo: "${userNotes}"` : ""}
+
+Hãy phân tích chuyên môn và trả về định dạng JSON cấu trúc chính xác sau:
+{
+  "identifiedCondition": "Tên vết thương hoặc sự cố nhận diện (Tiếng Việt)",
+  "urgencyLevel": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  "confidenceScore": 95,
+  "visualObservations": [
+    "Quan sát 1...",
+    "Quan sát 2..."
+  ],
+  "immediateActions": [
+    "Hành động sơ cứu khẩn cấp 1...",
+    "Hành động sơ cứu khẩn cấp 2...",
+    "Hành động sơ cứu khẩn cấp 3..."
+  ],
+  "criticalWarnings": [
+    "KHÔNG ĐƯỢC LÀM 1...",
+    "KHÔNG ĐƯỢC LÀM 2..."
+  ],
+  "call115Required": true,
+  "emergency115Message": "Thông điệp gửi 115 hoặc 114 nếu nguy hiểm",
+  "voiceScript": "Lời dặn ngắn gọn 2-3 câu bằng tiếng Việt để máy đọc hướng dẫn sơ cứu lập tức."
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: imageMime,
+              data: cleanBase64,
+            },
+          },
+          {
+            text: promptText,
+          },
+        ],
+      },
+      config: {
+        responseMimeType: "application/json",
+        systemInstruction:
+          "Bạn là bác sĩ cấp cứu y tế chuyên sâu với khả năng chẩn đoán thị giác AI. Đưa ra tư vấn sơ cứu khẩn cấp chính xác, an toàn, tuân thủ tiêu chuẩn y tế quốc tế.",
+      },
+    });
+
+    const jsonText = response.text || "{}";
+    const result = JSON.parse(jsonText);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error("Error in /api/ai/vision-first-aid:", error);
+    return res.status(500).json({
+      error: "Không thể phân tích hình ảnh lúc này",
+      details: error.message,
+    });
+  }
+});
+
 // Vite Middleware for dev & static serving for prod
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
