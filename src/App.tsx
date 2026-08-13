@@ -86,8 +86,8 @@ export default function App() {
   const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false);
   const [isSosActiveSuccess, setIsSosActiveSuccess] = useState(false);
 
-  // 1-Minute Automatic Background Heartbeat Signal Sync
-  const [nextHeartbeatSeconds, setNextHeartbeatSeconds] = useState(60);
+  // 5-Minute Automatic Background Heartbeat Signal Sync
+  const [nextHeartbeatSeconds, setNextHeartbeatSeconds] = useState(300);
   const [lastHeartbeatTime, setLastHeartbeatTime] = useState<string>("Vừa cập nhật");
 
   useEffect(() => {
@@ -99,7 +99,7 @@ export default function App() {
         {
           isAlertActive: isSosActiveSuccess,
           alertType: isSosActiveSuccess ? "SOS_EMERGENCY" : "NONE",
-          alertReason: isSosActiveSuccess ? "Người dùng kích hoạt tín hiệu SOS khẩn cấp!" : "Heartbeat tự động 1 phút/lần",
+          alertReason: isSosActiveSuccess ? "Người dùng kích hoạt tín hiệu SOS khẩn cấp!" : "Heartbeat tự động 5 phút/lần",
         },
         true
       );
@@ -110,7 +110,7 @@ export default function App() {
     const timer = setInterval(() => {
       setNextHeartbeatSeconds((prev) => {
         if (prev <= 1) {
-          // Trigger 1-minute heartbeat update to Firebase
+          // Trigger 5-minute heartbeat update to Firebase
           if (userProfile.guardianCode) {
             publishLiveStateToFirebase(
               userProfile,
@@ -118,13 +118,13 @@ export default function App() {
               {
                 isAlertActive: isSosActiveSuccess,
                 alertType: isSosActiveSuccess ? "SOS_EMERGENCY" : "NONE",
-                alertReason: isSosActiveSuccess ? "Người dùng kích hoạt tín hiệu SOS khẩn cấp!" : "Heartbeat tự động 1 phút/lần",
+                alertReason: isSosActiveSuccess ? "Người dùng kích hoạt tín hiệu SOS khẩn cấp!" : "Heartbeat tự động 5 phút/lần",
               },
               true
             );
             setLastHeartbeatTime(new Date().toLocaleTimeString("vi-VN"));
           }
-          return 60;
+          return 300;
         }
         return prev - 1;
       });
@@ -287,7 +287,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-red-500 selection:text-white pb-12">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased selection:bg-red-500 selection:text-white pb-12">
       {/* Navigation Header */}
       <Navbar
         activeTab={activeTab}
@@ -304,7 +304,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Active SOS Broadcast Success Alert Toast */}
         {isSosActiveSuccess && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-600 to-amber-600 text-white shadow-2xl flex flex-wrap items-center justify-between gap-3 animate-pulse border-2 border-red-400">
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-red-600 to-amber-600 text-white shadow-xl flex flex-wrap items-center justify-between gap-3 animate-pulse border border-red-500">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-6 h-6 text-emerald-300 shrink-0" />
               <div>
@@ -320,7 +320,7 @@ export default function App() {
                 stopEmergencySiren();
                 setIsSirenPlaying(false);
               }}
-              className="px-3.5 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-xl shadow hover:bg-black transition"
+              className="px-3.5 py-1.5 bg-white text-red-700 font-black text-xs rounded-xl shadow hover:bg-slate-100 transition"
             >
               Tắt Tín Hiệu SOS
             </button>
@@ -329,17 +329,17 @@ export default function App() {
 
         {/* Incoming Ping Toast Alert from Firebase */}
         {incomingPing && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-2xl flex items-center justify-between gap-3 animate-bounce border-2 border-amber-300">
+          <div className="mb-6 p-4 rounded-2xl bg-amber-500 text-white shadow-xl flex items-center justify-between gap-3 animate-bounce border border-amber-400">
             <div className="flex items-center gap-3">
               <Bell className="w-6 h-6 text-white shrink-0" />
               <div>
-                <h3 className="font-extrabold text-sm">THÔNG BÁO KIỂM TRA TỪ NGƯỜI THÂN ({incomingPing.senderName}):</h3>
+                <h3 className="font-extrabold text-sm">CẢNH BÁO / YÊU CẦU KIỂM TRA TỪ NGƯỜI THÂN ({incomingPing.senderName}):</h3>
                 <p className="text-xs text-amber-100 font-medium">{incomingPing.message}</p>
               </div>
             </div>
             <button
               onClick={() => setIncomingPing(null)}
-              className="px-3 py-1 bg-slate-900 text-amber-300 font-bold text-xs rounded-xl shadow hover:bg-black transition"
+              className="px-3.5 py-1.5 bg-white text-slate-900 font-black text-xs rounded-xl shadow hover:bg-slate-100 transition"
             >
               Tôi An Toàn
             </button>
