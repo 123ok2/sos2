@@ -1,0 +1,11 @@
+{
+  "name": "AI SafetyNet - SOS Khẩn cấp",
+  "description": "Hệ thống cảnh báo sự cố khẩn cấp, phát hiện té ngã, phân tích âm thanh và trợ lý sơ cứu thông minh bằng AI",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
